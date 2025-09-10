@@ -218,5 +218,13 @@ export function NCSSTest1() {
   NCSS(["main"], {
     color: "green",
   })
+
+  // NCSSLayerBegin()
+
+  //chacha, how about this, I could actually use layers in this shit so you can do stuff like <svg> styling and other nonsense but the control flow remains??
+  //let's sleep on that
+  
+  // NCSSLayerEnd()
+
   NCSSBuild()
 }

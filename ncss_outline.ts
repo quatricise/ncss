@@ -1,4 +1,5 @@
 
+
 /** Query the document to get a single element matching the query (standard querySelector) */
 function $h(query: string): HTMLElement {
   const element = document.querySelector(query);
@@ -40,8 +41,7 @@ function assert(predicate: boolean, errorMsg: string) {
 
 
 
-
-
+type NCSSStyle = Partial<CSSStyleDeclaration> & Iterable<[keyof CSSStyleDeclaration, string | null | undefined]>
 
 type NCSSQuery = 
   | { type: "string"; value: string}
@@ -49,48 +49,79 @@ type NCSSQuery =
 
 interface NCSSAction {
   query: NCSSQuery, 
-  style: Partial<CSSStyleDeclaration>
+  style: NCSSStyle
 };
 
-const NCSSActions: NCSSAction[] = [];
-
-function NCSSRegisterElementId(id: string) {
-  
-};
-
-// important: 
-// 07-09-2025: 
-// I think this should not have any compound properties, it would be a nightmare having to deal with those and how it interacts with my code
-// also: the user can customize this to be anything, but it should be communicated this is expected from NCSS and changing it could make it difficult for others to deal with their code
-function NCSSApplyZero(element: HTMLElement) {
-  element.style.backgroundColor = "white";
-  element.style.color = "black";
-
-  element.style.paddingTop =    "0";
-  element.style.paddingBottom = "0";
-  element.style.paddingRight =  "0";
-  element.style.paddingLeft =   "0";
-
-  element.style.marginTop =     "0";
-  element.style.marginBottom =  "0";
-  element.style.marginRight =   "0";
-  element.style.marginLeft =    "0";
-
-  element.style.borderTop =     "0";
-  element.style.borderBottom =  "0";
-  element.style.borderRight =   "0";
-  element.style.borderLeft =    "0";
-
-  element.style.fontFamily = "serif";
-  element.style.display = "initial";
-  element.style.position = "static";
+interface NCSSId {
+  id: number
+  name: string // I think this is the query you input into NCSS(), but I don't know yet. NCSS is only a styling engine, it does not touch markup other than by adding style info.
 }
 
-function NCSSAddStylingFunction(query: NCSSQuery, style: Partial<CSSStyleDeclaration>) {
+const NCSSActions: NCSSAction[] = []; // series of actions that are then executed once the list is complete
+
+// I think elements tracked internally by NCSS should have numerical ids so string parsing doesn't have to be done.
+// This is an array and not Set, because I want to throw when you try to add the same id again. Set<> would just quietly swallow the mistake.
+const NCSSIds: NCSSId[] = []
+
+function NCSSRegisterElement(name: string) {
+  assert(NCSSIds.find(id => id.name === name) !== undefined, "Name already exists")
+
+  const random = Math.round(Math.random() * 1_000_000_000_000) // @todo replace generator for something sophisticated
+  NCSSIds.push({id: random, name: name})
+};
+
+
+
+// 07-09-2025:
+// I think this should not have any compound properties, it would be a nightmare having to deal with those and how it interacts with my code
+
+// also: the user can customize this function to contain any default styles, but it should be communicated this is expected from NCSS and changing it could make it difficult for others to deal with their code
+// also 2: I could make the compound properties (padding or border) forbidden in NCSS, which could annoy people but they'd get used to it. It's just a little bit of extra typing.
+function NCSSApplyBase(element: HTMLElement) {
+  const s = element.style
+
+  // try to make these groups go alphabetically, such as "font(F)amily, font(S)ize, font(W)eight"
+
+  s.backgroundColor = "white";
+  s.color = "black";
+
+  s.paddingTop =      "0";
+  s.paddingBottom =   "0";
+  s.paddingLeft =     "0";
+  s.paddingRight =    "0";
+
+  s.marginTop =       "0";
+  s.marginBottom =    "0";
+  s.marginLeft =      "0";
+  s.marginRight =     "0";
+
+  s.borderTop =       "0";
+  s.borderBottom =    "0";
+  s.borderLeft =      "0";
+  s.borderRight =     "0";
+
+  s.fontFamily =      "serif";
+  s.fontSize =        "1rem";
+  s.fontStyle =       "normal";
+  s.fontWeight =      "400";
+
+  s.display =         "initial";
+  s.alignItems =      "flex-start";
+  s.justifyContent =  "flex-start";
+
+  s.position =        "static";
+  s.top =             "0";
+  s.bottom =          "0";
+  s.right =           "0";
+  s.left =            "0";
+}
+
+function NCSSAddStylingFunction(query: NCSSQuery, style: NCSSStyle) {
   NCSSActions.push({query, style})
 }
 
-function NCSSApply(query: NCSSQuery, style: Partial<CSSStyleDeclaration>) {
+// formerly NCSSApplyStyle() but I think it should be shorter like this
+function NCSS(query: NCSSQuery, style: NCSSStyle) {
   const queries: string[] = []
 
   switch(query.type) {
@@ -109,24 +140,40 @@ function NCSSApply(query: NCSSQuery, style: Partial<CSSStyleDeclaration>) {
 
 	queries.forEach(query => {
     for(const key in style) {
-      $h(query).style[key] 
+      NCSSRegisterElement(query)
     }
   })
 }
 
-function NCSSGenerateStyles(): [string[], string[]] {
-  const styles: string[] = []
-  const ids: string[] = []
+// runs the styling function
+function NCSSRun() {
+  const sheet = new CSSStyleSheet()
 
-  assert(ids.length === styles.length, "Styles and IDs do not match length.")
-  return [ids, styles]
+  NCSSActions.forEach(action => {
+    const layerName = action.query
+    const elementName = action.query
+    let styleString: string = ""
+
+    for(const key of action.style) {
+      styleString += `${key}: ${action.style[key]}; \n`
+    }
+
+    sheet.insertRule(`
+      @layer ${layerName} {
+        #${elementName} {
+          ${styleString}
+        }
+      }
+    `)
+  })
 }
 
-// let keys = []
-// let values = []
-// for(let key in document.body.style) {
-//     keys.push(key)
-//     values.push(document.body.style[key])
-// }
-// console.log(keys.join("\n"))
-// console.log(values.join("\n"))
+function test1() {
+
+}
+
+// The output goal is currently: JS objects that contain style info. Perhaps a "Map<(html element id), NCSSStyle>"
+
+// Random note but kinda important: should this project not actually output raw CSS? using a different system than stupid BEM, but something that is trackable back but
+// remains CSS because I don't want to run a shit-ton of javascript to actually style a website, even if a shit-ton already runs in other libraries, so maybe fuck it
+// I can try to rely on this javascript system for a while unless it proves to be unreadable.

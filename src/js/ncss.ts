@@ -49,10 +49,20 @@ function camelToDashed(str: string): string {
 
 type NCSSStyle = Partial<CSSStyleDeclaration>
 
+type NCSSActionType = "ID_RULE" | "ID_SUB_RULE"
+
 interface NCSSAction {
+  type: NCSSActionType,
+
+  // currently unused I think
   id: number,
-  name: string, // I think this is the query you input into NCSS(), but I don't know yet. NCSS is only a styling engine, it does not touch markup other than by adding style info.
+
+  // I think this is the element id query you input into NCSS(), NCSS throws if there is not element found with that id. 
+  // NCSS is only a styling engine, it does not touch markup other than by adding style info.
+  name: string,
+
   style: NCSSStyle,
+  layerName: string | null,
 };
 
 
@@ -61,17 +71,20 @@ const NCSSFlags = {
   endedStyling: false,
 }
 
-const NCSSActions: NCSSAction[] = []; // series of actions that are then executed once the list is complete
-let NCSSNextActionIndex: number = 0
+
 // I think elements tracked internally by NCSS should have numerical ids so string parsing doesn't have to be done.
 // This is an array and not Set, because I want to throw when you try to add the same id again. Set<> would just quietly swallow the mistake.
+// 11-09-2025 I do not use the IDs for anything yet. Might actually remove them, who knows.
+const NCSSActions: NCSSAction[] = [];
+let NCSSNextActionIndex: number = 0
 
-function NCSSRegisterAction(name: string, style: NCSSStyle) {
+function NCSSRegisterAction(name: string, style: NCSSStyle, layerName: string | null) {
   assert(NCSSActions.find(action => action.name === name) === undefined, "Name already exists: " + name)
   assert(document.querySelector("#" + name) != null, `$h found not element with id: #${name}`)
 
-  const random = NCSSNextActionIndex + 1 // @todo replace generator for something sophisticated
-  NCSSActions.push({id: random, name: name, style: style})
+  const id = NCSSNextActionIndex
+  NCSSNextActionIndex++
+  NCSSActions.push({id, name, style, layerName: layerName ?? null})
 };
 
 
@@ -86,25 +99,25 @@ function NCSSApplyBase(element: HTMLElement) {
   //this is not how it's done, it will drop these first into each LAYER-ELEMENT-THINGY and then potentially replace these base ones by the new ones supplied
   const s = element.style 
 
-  // try to make these groups go alphabetically, such as "font(F)amily, font(S)ize, font(W)eight"
+  // note: try to make these groups go alphabetically, such as "font(F)amily, font(S)ize, font(W)eight", or TOP-RIGHT-BOTTOM-LEFT
 
   s.backgroundColor = "white";
-  s.color = "black";
+  s.color =           "black";
 
   s.paddingTop =      "0";
+  s.paddingRight =    "0";
   s.paddingBottom =   "0";
   s.paddingLeft =     "0";
-  s.paddingRight =    "0";
 
   s.marginTop =       "0";
+  s.marginRight =     "0";
   s.marginBottom =    "0";
   s.marginLeft =      "0";
-  s.marginRight =     "0";
 
   s.borderTop =       "0";
+  s.borderRight =     "0";
   s.borderBottom =    "0";
   s.borderLeft =      "0";
-  s.borderRight =     "0";
 
   s.fontFamily =      "serif";
   s.fontSize =        "1rem";
@@ -117,8 +130,8 @@ function NCSSApplyBase(element: HTMLElement) {
 
   s.position =        "static";
   s.top =             "0";
-  s.bottom =          "0";
   s.right =           "0";
+  s.bottom =          "0";
   s.left =            "0";
 }
 
@@ -126,7 +139,7 @@ function NCSS(queries: string[], style: NCSSStyle) {
   assert(NCSSFlags.beganStyling && !NCSSFlags.endedStyling, "NCSS: Forgot to call 'NCSSBegin()'.")
   assert(Object.keys(style).length !== 0, "NCSS: No empty styles allowed.")
 	queries.forEach(query => {
-    NCSSRegisterAction(query, style)
+    NCSSRegisterAction(query, style, NCSSLayerCurrent)
   })
 }
 
@@ -151,18 +164,27 @@ function NCSSCheckHTML() {
 }
 
 // runs the styling function
+// so far it is quite dumb so it creates a layer block even if a layer is active, but I don't know if that's a problem yet.
 function NCSSBuild() {
+  assert(NCSSFlags.endedStyling === false, "Already build the stylesheet. Cannot call NCSSBuild() again.")
   NCSSCheckHTML()
   NCSSFlags.endedStyling = true
   console.log(NCSSActions)
   const stylesheet = new CSSStyleSheet()
+  const layers: Set<string> = new Set()
 
-  const layerRule = `@layer ${NCSSActions.map(a => a.name).join(", ")};`
+  NCSSActions.forEach(action => {
+    layers.add(action.layerName ?? action.name)
+  })
+
+  console.log(layers)
+
+  const layerRule = `@layer ${Array.from(layers).join(", ")};`
   stylesheet.insertRule(layerRule)
   console.log(layerRule)
 
   NCSSActions.forEach(action => {
-    const layerName = action.name
+    const layerName = action.layerName ?? action.name
     const elementName = action.name
     let styleString: string = ""
 
@@ -187,8 +209,53 @@ function NCSSBuild() {
   console.log(stylesheet)
 }
 
+const NCSSLayers: string[] = []
+let NCSSLayerCurrent: string | null = null
+
+// is missing policing for wrong strings with incorrect characters in them, I should limit to [a-z, 0-9, _-] and that's it??
+function NCSSLayerBegin(layerName: string) {
+  assert(NCSSLayerCurrent === null, `Forgot to end previous layer: '${NCSSLayerCurrent}'`)
+  assert(layerName !== "" && layerName !== null, "Incorrect layer name: Cannot be empty string or null.")
+  assert(NCSSLayers.find(l => l === layerName) === undefined, `This layerName already exists: '${layerName}'`)
+  assert(layerName.includes(" ") === false, `No whitespace characters allowed in layerName: ${layerName}`)
+
+  NCSSLayerCurrent = layerName
+  NCSSLayers.push(layerName)
+}
+
+function NCSSLayerEnd(layerName: string) {
+  assert(layerName === NCSSLayerCurrent, `Incorrect layer name: ${layerName}. Current layer is: ${NCSSLayerCurrent}`)
+
+  NCSSLayerCurrent = null
+}
+
+// this is extremely inefficient code
+function NCSSSubRule(idBasedQueries: string[], subordinateQueries: string[], style: NCSSStyle) {
+  const missingQueries: string[] = []
+  const lengthCheck: Set<string> = new Set()
+
+  idBasedQueries.forEach(query => {
+    lengthCheck.add(query)
+    const match = NCSSActions.find(action => action.name === query)
+    if(!match) {
+      missingQueries.push(query)
+    }
+  })
+  
+  assert(missingQueries.length === 0, `Not all queries found in NCSSActions[]. These are missing: ${missingQueries.map(q=>`'${q}'`).join(", ")}`)
+  assert(idBasedQueries.length === lengthCheck.size, `Duplicate queries.`) //could be more verbose
+}
+
 export function NCSSTest1() {
   NCSSBegin()
+
+  NCSSLayerBegin("main")
+  NCSS(["main"], {
+    color: "green",
+  })
+  NCSSLayerEnd("main")
+
+  NCSSLayerBegin("section-hero")
   NCSS(["section-hero"], {
     display: "flex",
     gap: "20px",
@@ -197,6 +264,16 @@ export function NCSSTest1() {
     backgroundColor: "blue",
     height: "100px",
   })
+
+  // now this is my big thing, you can insert any CSS selectors
+  // this also uses layers if one is active at the 'global' NCSS level
+  // each sub-rule has to be attached to an ID-identified element that has been established previously, and ideally before a new one is established in the chain, yes, for transparency !
+  // the subrule now fucks up my single-action type system, so I might have to turn actions into a discrim. union
+  NCSSSubRule(["section-hero"], ["svg", "svg.icon"], {
+    width: "100%",
+    height: "100%",
+  })
+
   NCSS(["section-hero--thingymabob", "section-hero--thingymabob1", "section-hero--thingymabob2"], {
     width: "100px",
     height: "100px",
@@ -215,16 +292,7 @@ export function NCSSTest1() {
     display: "grid",
     gridAutoFlow: "row",
   })
-  NCSS(["main"], {
-    color: "green",
-  })
-
-  // NCSSLayerBegin()
-
-  //chacha, how about this, I could actually use layers in this shit so you can do stuff like <svg> styling and other nonsense but the control flow remains??
-  //let's sleep on that
-  
-  // NCSSLayerEnd()
+  NCSSLayerEnd("section-hero")
 
   NCSSBuild()
 }

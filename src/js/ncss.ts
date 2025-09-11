@@ -78,13 +78,13 @@ const NCSSFlags = {
 const NCSSActions: NCSSAction[] = [];
 let NCSSNextActionIndex: number = 0
 
-function NCSSRegisterAction(name: string, style: NCSSStyle, layerName: string | null) {
+function NCSSRegisterAction(name: string, style: NCSSStyle, layerName: string | null, type: NCSSActionType) {
   assert(NCSSActions.find(action => action.name === name) === undefined, "Name already exists: " + name)
   assert(document.querySelector("#" + name) != null, `$h found not element with id: #${name}`)
 
   const id = NCSSNextActionIndex
   NCSSNextActionIndex++
-  NCSSActions.push({id, name, style, layerName: layerName ?? null})
+  NCSSActions.push({id: id, name: name, style: style, layerName: layerName ?? null, type: type})
 };
 
 
@@ -139,7 +139,7 @@ function NCSS(queries: string[], style: NCSSStyle) {
   assert(NCSSFlags.beganStyling && !NCSSFlags.endedStyling, "NCSS: Forgot to call 'NCSSBegin()'.")
   assert(Object.keys(style).length !== 0, "NCSS: No empty styles allowed.")
 	queries.forEach(query => {
-    NCSSRegisterAction(query, style, NCSSLayerCurrent)
+    NCSSRegisterAction(query, style, NCSSLayerCurrent, "ID_RULE")
   })
 }
 

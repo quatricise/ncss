@@ -8,11 +8,11 @@ function $h(query: string): HTMLElement {
 }
 
 /** Query the document to get a single element matching the query (similar to querySelectorAll, but returns an array, instead of Nodelist) */
-function $ha(query: string, errorOnMiss: boolean = true): HTMLElement[] {
+function $ha(query: string, errors: boolean = true): HTMLElement[] {
   const elements = Array.from(document.querySelectorAll(query));
 
   if (!elements || elements.length === 0) {
-    if (errorOnMiss) {
+    if (errors) {
       console.error("$ha: Error", elements)
       throw new Error("$ha: No HTMLElements found by query: ${query}. \n Maybe you wanted to look for MathMLElement or SVGElement? If so, use $m/$ma or $s/$sa functions instead.");
     } 
@@ -22,7 +22,7 @@ function $ha(query: string, errorOnMiss: boolean = true): HTMLElement[] {
   }
     
   if(elements.every((e) => e instanceof HTMLElement) === false) {
-    if(errorOnMiss) {
+    if(errors) {
       console.error("$ha: Error", elements)
       throw new Error("$ha: Not every element found is an HTMLElement.")
     } 
@@ -52,16 +52,17 @@ type NCSSStyle = Partial<CSSStyleDeclaration>
 type NCSSActionType = "ID_RULE" | "ID_SUB_RULE"
 
 interface NCSSAction {
-  type: NCSSActionType,
+  type: NCSSActionType, //@refactor later - so far I'm not 100% convinced, but... NCSSAction ought to be a union type, if I am to add more actions later.
 
   // currently unused I think
   id: number,
 
-  // I think this is the element id query you input into NCSS(), NCSS throws if there is not element found with that id. 
+  // I think this is the element id query you input into NCSS(), NCSS throws if there is not element found with that id.
   // NCSS is only a styling engine, it does not touch markup other than by adding style info.
   name: string,
 
   style: NCSSStyle,
+
   layerName: string | null,
 };
 
@@ -71,6 +72,12 @@ const NCSSFlags = {
   endedStyling: false,
 }
 
+interface NCSSSubRuleOptions {
+  protect?: boolean
+}
+
+const NCSSLayers: string[] = []
+let NCSSLayerCurrent: string | null = null
 
 // I think elements tracked internally by NCSS should have numerical ids so string parsing doesn't have to be done.
 // This is an array and not Set, because I want to throw when you try to add the same id again. Set<> would just quietly swallow the mistake.
@@ -138,6 +145,7 @@ function NCSSApplyBase(element: HTMLElement) {
 function NCSS(queries: string[], style: NCSSStyle) {
   assert(NCSSFlags.beganStyling && !NCSSFlags.endedStyling, "NCSS: Forgot to call 'NCSSBegin()'.")
   assert(Object.keys(style).length !== 0, "NCSS: No empty styles allowed.")
+  
 	queries.forEach(query => {
     NCSSRegisterAction(query, style, NCSSLayerCurrent, "ID_RULE")
   })
@@ -147,7 +155,7 @@ function NCSSBegin() {
   NCSSFlags.beganStyling = true
 }
 
-/** Runs before generating the stylesheet. Checks for duplicate element ids. */
+/** Runs before generating the stylesheet. Checks for duplicate element ids in the document. */
 function NCSSCheckHTML() {
   const elements = $ha("*")
   const ids = new Set<string>()
@@ -209,9 +217,6 @@ function NCSSBuild() {
   console.log(stylesheet)
 }
 
-const NCSSLayers: string[] = []
-let NCSSLayerCurrent: string | null = null
-
 // is missing policing for wrong strings with incorrect characters in them, I should limit to [a-z, 0-9, _-] and that's it??
 function NCSSLayerBegin(layerName: string) {
   assert(NCSSLayerCurrent === null, `Forgot to end previous layer: '${NCSSLayerCurrent}'`)
@@ -229,11 +234,11 @@ function NCSSLayerEnd(layerName: string) {
   NCSSLayerCurrent = null
 }
 
-// this is extremely inefficient code
-function NCSSSubRule(idBasedQueries: string[], subordinateQueries: string[], style: NCSSStyle) {
+function NCSSSubRule(idBasedQueries: string[], subordinateQueries: string[], style: NCSSStyle, options: NCSSSubRuleOptions) {
   const missingQueries: string[] = []
   const lengthCheck: Set<string> = new Set()
 
+  // this is very inefficient search code
   idBasedQueries.forEach(query => {
     lengthCheck.add(query)
     const match = NCSSActions.find(action => action.name === query)
@@ -244,6 +249,10 @@ function NCSSSubRule(idBasedQueries: string[], subordinateQueries: string[], sty
   
   assert(missingQueries.length === 0, `Not all queries found in NCSSActions[]. These are missing: ${missingQueries.map(q=>`'${q}'`).join(", ")}`)
   assert(idBasedQueries.length === lengthCheck.size, `Duplicate queries.`) //could be more verbose
+
+  idBasedQueries.forEach(query => {
+    NCSSRegisterAction(query, style, NCSSLayerCurrent, "ID_SUB_RULE")
+  })
 }
 
 export function NCSSTest1() {
@@ -272,7 +281,8 @@ export function NCSSTest1() {
   NCSSSubRule(["section-hero"], ["svg", "svg.icon"], {
     width: "100%",
     height: "100%",
-  })
+  }, 
+  {protect: true})
 
   NCSS(["section-hero--thingymabob", "section-hero--thingymabob1", "section-hero--thingymabob2"], {
     width: "100px",

@@ -248,23 +248,81 @@ function NCSSSubRule(idBasedQueries: string[], subordinateQueries: string[], sty
   })
   
   assert(missingQueries.length === 0, `Not all queries found in NCSSActions[]. These are missing: ${missingQueries.map(q=>`'${q}'`).join(", ")}`)
-  assert(idBasedQueries.length === lengthCheck.size, `Duplicate queries.`) //could be more verbose
+  assert(idBasedQueries.length === lengthCheck.size, `Duplicate queries.`) //could be more verbose error
 
   idBasedQueries.forEach(query => {
     NCSSRegisterAction(query, style, NCSSLayerCurrent, "ID_SUB_RULE")
   })
 }
 
+
+
+
+
+// HTML framework into the mix because why not xddd
+// I need to police everything, it still kinda sucks that you can't procedurally work with layout, NCSS probably is not the final thing I need. 
+// I actually need a framework that works like C
+
+
+//set into the map by element ids
+const HTMLElements: Map<string, HTMLElement> = new Map()
+
+function HTML(tagname: string, id: string, data: {c?: [string, string][], a?: [string, string][], d?: [string, string][]}): HTMLElement {
+  const element = document.createElement(tagname)
+
+  data.a?.forEach(pair => element.setAttribute(pair[0], pair[1]))
+  data.d?.forEach(pair => element.dataset[pair[0]] = pair[1])
+  data.c?.forEach(pair => element.classList.add(pair[0], pair[1]))
+
+  HTMLElements.set(id, element)
+
+  return element
+}
+
+// this shit is like NCSSBuild.
+// It is just the build function and you can decide to re-run this at your convenience.
+// However, if this destroys your HTML, it means all logic has to be rerun and no references work,
+// that is problematic
+function HTMLBuild() {
+  const globalState = {
+    cards: [] as HTMLElement[]
+  }
+  const cards: HTMLElement[] = []
+
+  HTML("a", "big-header-button", {d: [["cms-integration", "true"]]})
+  
+  for(let i = 0; i < 5; ++i) {
+    cards.push(HTML("div", "user-card-" + i, {}))
+  }
+
+  // do something with the cards now, put into global state, whatever
+  // this kinda sucks, idk how to police this, but I guess I just define a Struct for the state and add something once I need it
+  globalState.cards = cards
+
+  NCSS(["big-header-button"], {
+    display: "flex",
+    flexDirection: "column",
+    color: "red",
+  })
+}
+
+
+
+
+
+
 export function NCSSTest1() {
   NCSSBegin()
 
   NCSSLayerBegin("main")
+
   NCSS(["main"], {
     color: "green",
   })
   NCSSLayerEnd("main")
 
   NCSSLayerBegin("section-hero")
+
   NCSS(["section-hero"], {
     display: "flex",
     gap: "20px",
@@ -295,13 +353,16 @@ export function NCSSTest1() {
     alignItems: "center",
     textAlign: "center",
   })
+
   NCSS(["shitty-text"], {
     color: "pink",
   })
+
   NCSS(["section-detail"], {
     display: "grid",
     gridAutoFlow: "row",
   })
+
   NCSSLayerEnd("section-hero")
 
   NCSSBuild()

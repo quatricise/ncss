@@ -284,6 +284,8 @@ function HTML(tagname: string, id: string, data: {c?: [string, string][], a?: [s
 // However, if this destroys your HTML, it means all logic has to be rerun and no references work,
 // that is problematic
 function HTMLBuild() {
+  
+  //this is a mock global state for demonstration
   const globalState = {
     cards: [] as HTMLElement[]
   }

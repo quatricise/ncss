@@ -143,7 +143,8 @@ function NCSSApplyBase(element: HTMLElement) {
 }
 
 function NCSS(queries: string[], style: NCSSStyle) {
-  assert(NCSSFlags.beganStyling && !NCSSFlags.endedStyling, "NCSS: Forgot to call 'NCSSBegin()'.")
+  assert(NCSSFlags.beganStyling, "NCSS: Forgot to call 'NCSSBegin()'.")
+  assert(!NCSSFlags.endedStyling, "NCSS: Already called 'NCSSBuild().'.")
   assert(Object.keys(style).length !== 0, "NCSS: No empty styles allowed.")
   
 	queries.forEach(query => {
@@ -177,7 +178,6 @@ function NCSSBuild() {
   assert(NCSSFlags.endedStyling === false, "Already build the stylesheet. Cannot call NCSSBuild() again.")
   NCSSCheckHTML()
   NCSSFlags.endedStyling = true
-  console.log(NCSSActions)
   const stylesheet = new CSSStyleSheet()
   const layers: Set<string> = new Set()
 
@@ -185,11 +185,9 @@ function NCSSBuild() {
     layers.add(action.layerName ?? action.name)
   })
 
-  console.log(layers)
 
   const layerRule = `@layer ${Array.from(layers).join(", ")};`
   stylesheet.insertRule(layerRule)
-  console.log(layerRule)
 
   NCSSActions.forEach(action => {
     const layerName = action.layerName ?? action.name
@@ -214,7 +212,6 @@ function NCSSBuild() {
   })
 
   document.adoptedStyleSheets.push(stylesheet)
-  console.log(stylesheet)
 }
 
 // is missing policing for wrong strings with incorrect characters in them, I should limit to [a-z, 0-9, _-] and that's it??
@@ -248,7 +245,7 @@ function NCSSSubRule(idBasedQueries: string[], subordinateQueries: string[], sty
   })
   
   assert(missingQueries.length === 0, `Not all queries found in NCSSActions[]. These are missing: ${missingQueries.map(q=>`'${q}'`).join(", ")}`)
-  assert(idBasedQueries.length === lengthCheck.size, `Duplicate queries.`) //could be more verbose error
+  assert(idBasedQueries.length === lengthCheck.size, `Duplicate queries.`) //could be more verbose
 
   idBasedQueries.forEach(query => {
     NCSSRegisterAction(query, style, NCSSLayerCurrent, "ID_SUB_RULE")
@@ -309,10 +306,6 @@ function HTMLBuild() {
 }
 
 
-
-
-
-
 export function NCSSTest1() {
   NCSSBegin()
 
@@ -354,6 +347,7 @@ export function NCSSTest1() {
     justifyContent: "center",
     alignItems: "center",
     textAlign: "center",
+    ...fill from style object //this could be super cool, if you want to do composition, you must explicitly store some shared values in a record and shove them in manually. This tells you what really goes into a style, not just scattered across various css files.
   })
 
   NCSS(["shitty-text"], {
@@ -369,3 +363,13 @@ export function NCSSTest1() {
 
   NCSSBuild()
 }
+
+/* 
+=================
+      GOALS
+=================
+
+Locality of behavior: Carson Gross's idea. I am strongly in favour of this, if I make a styler, then it also hooks into an HTML generator. it has to,
+And obviously, this is in JS so we already have custom logic at our disposal at any given point.
+
+*/
